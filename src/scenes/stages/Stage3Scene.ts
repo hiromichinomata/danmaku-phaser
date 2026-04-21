@@ -203,7 +203,7 @@ export class Stage3Scene extends Phaser.Scene {
     this.enemy.setVisible(false)
     const enemyBody = this.enemy.body as Phaser.Physics.Arcade.Body
     enemyBody.enable = false
-    showEndPauseWithRetry(this, 'GAME CLEAR', 'R : もう一度プレイ', {
+    showEndPauseWithRetry(this, 'GAME CLEAR', 'R : 最初から', {
       beforePause: () => this.removePatterns(),
       finalScore: this.score,
     })
@@ -229,7 +229,7 @@ export class Stage3Scene extends Phaser.Scene {
 
     if (this.lives <= 0) {
       this.runState = 'gameover'
-      showEndPauseWithRetry(this, 'GAME OVER', 'R : もう一度プレイ', {
+      showEndPauseWithRetry(this, 'GAME OVER', 'R : 最初から', {
         beforePause: () => this.removePatterns(),
       })
     }

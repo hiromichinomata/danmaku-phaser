@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { HEIGHT, WIDTH } from '../constants.ts'
+import { SCENE_KEYS } from '../registry/sceneKeys.ts'
 
 export type EndPauseOptions = {
   /** physics.pause の前に呼ぶ（例: ボス弾幕タイマー解除） */
@@ -9,7 +10,7 @@ export type EndPauseOptions = {
 }
 
 /**
- * クリア / ゲームオーバー共通のポーズ表示。R でシーン再起動（ステージ側で差し替え可）
+ * クリア / ゲームオーバー共通のポーズ表示。R でステージ1から最初からやり直し。
  */
 export function showEndPauseWithRetry(
   scene: Phaser.Scene,
@@ -58,5 +59,7 @@ export function showEndPauseWithRetry(
     throw new Error('Keyboard input is unavailable.')
   }
   const retryKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R)
-  retryKey.once('down', () => scene.scene.restart())
+  retryKey.once('down', () => {
+    scene.scene.start(SCENE_KEYS.stage1)
+  })
 }
