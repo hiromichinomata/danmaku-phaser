@@ -5,10 +5,10 @@ import { spawnEnemyBulletArc } from '../../game/bullets/spawnEnemyBullet.ts'
 import {
   ENEMY_BULLET_SPEED,
   ENEMY_HIT_FLASH_MS,
-  ENEMY_HP_MAX,
   INVINCIBLE_MS,
   WIDTH,
 } from '../../game/constants.ts'
+import { resolveEnemyHpMax } from '../../game/debugFlags.ts'
 import { ringBulletVelocities, spiralBulletPair } from '../../game/patterns/bossDanmaku.ts'
 import { SCENE_KEYS } from '../../game/registry/sceneKeys.ts'
 import { showEndPauseWithRetry } from '../../game/stage/endPause.ts'
@@ -27,7 +27,9 @@ export class Stage1Scene extends Phaser.Scene {
 
   private lives = 3
   private score = 0
-  private enemyHp = ENEMY_HP_MAX
+  /** ランタイムで解決（URL / 環境変数のデバッグ用 HP を反映） */
+  private enemyHpMax = 140
+  private enemyHp = 0
   private enemyAlive = true
   private isInvincible = false
   private invincibleUntil = 0
@@ -51,7 +53,8 @@ export class Stage1Scene extends Phaser.Scene {
     this.playerShot.reset()
     this.lives = 3
     this.score = 0
-    this.enemyHp = ENEMY_HP_MAX
+    this.enemyHpMax = resolveEnemyHpMax()
+    this.enemyHp = this.enemyHpMax
     this.enemyAlive = true
     this.isInvincible = false
     this.invincibleUntil = 0
@@ -198,6 +201,7 @@ export class Stage1Scene extends Phaser.Scene {
       enemyBody.enable = false
       showEndPauseWithRetry(this, 'STAGE CLEAR', 'R : もう一度プレイ', {
         beforePause: () => this.removeBossPatterns(),
+        finalScore: this.score,
       })
     }
   }
@@ -258,20 +262,39 @@ export class Stage1Scene extends Phaser.Scene {
   }
 
   private updateHud(): void {
-    const hpRate = Math.max(this.enemyHp / ENEMY_HP_MAX, 0)
+    if (this.runState === 'clear') {
+      this.playfield.hudText.setVisible(false)
+      return
+    }
+
+    this.playfield.hudText.setVisible(true)
     const lines = [
       `SCORE: ${this.score.toString().padStart(7, '0')}`,
       `LIFE : ${'@'.repeat(Math.max(this.lives, 0))}`,
-      `BOSS : ${'|'.repeat(Math.ceil(hpRate * 20)).padEnd(20, '.')}`,
+      this.formatBossHudLine(),
       'MOVE : Arrow / WASD',
       'SHOT : Space / Z',
       'FOCUS: Shift',
     ]
-    if (this.runState === 'clear') {
-      lines.push('', '--- STAGE CLEAR ---')
-    } else if (this.runState === 'gameover') {
+    if (this.enemyHpMax === 1) {
+      lines.unshift('[DEBUG] BOSS HP = 1')
+    }
+    if (this.runState === 'gameover') {
       lines.push('', '--- GAME OVER ---')
     }
     this.playfield.hudText.setText(lines)
+  }
+
+  /** `|` / `.` のバーのみ。最大HPが1（デバッグ）のときはセグメント数も1 */
+  private formatBossHudLine(): string {
+    const cur = this.enemyHp
+    const max = this.enemyHpMax
+    if (max === 1) {
+      const bar = cur >= 1 ? '|' : '.'
+      return `BOSS : ${bar}`
+    }
+    const hpRate = max > 0 ? cur / max : 0
+    const bar = '|'.repeat(Math.ceil(hpRate * 20)).padEnd(20, '.')
+    return `BOSS : ${bar}`
   }
 }

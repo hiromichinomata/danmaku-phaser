@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:debug-boss": "VITE_DEBUG_BOSS_HP=true vite",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
