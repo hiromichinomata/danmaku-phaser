@@ -4,35 +4,43 @@ import { PlayerAutoShot } from '../../game/bullets/playerAutoShot.ts'
 import { spawnEnemyBulletArc } from '../../game/bullets/spawnEnemyBullet.ts'
 import { ENEMY_BULLET_SPEED, ENEMY_HIT_FLASH_MS, INVINCIBLE_MS, WIDTH } from '../../game/constants.ts'
 import { resolveEnemyHpMax } from '../../game/debugFlags.ts'
+import {
+  doubleRingVelocities,
+  octDirectionBurst,
+  rotatingSpokeVelocities,
+  tightAimedFan,
+} from '../../game/patterns/stage3Danmaku.ts'
 import { SCENE_KEYS } from '../../game/registry/sceneKeys.ts'
 import { showEndPauseWithRetry } from '../../game/stage/endPause.ts'
 import { installPlayfield, type PlayfieldContext } from '../../game/stage/playfield.ts'
 import { updatePlayerInvincibleBlink } from '../../game/stage/playerInvincible.ts'
 import { updatePlayerMovement } from '../../game/stage/playerMovement.ts'
 import type { RunState, StageStartData } from '../../game/types.ts'
-import { aimedFanVelocities, rotatingFlowerVelocities } from '../../game/patterns/stage2Danmaku.ts'
 
-const STAGE2_BASE_HP = 220
+/** 最終ステージ：HP多め・複合パターン（見栄えは維持しつつ避け幅を少し確保） */
+const STAGE3_BASE_HP = 420
 
-export class Stage2Scene extends Phaser.Scene {
+export class Stage3Scene extends Phaser.Scene {
   private playfield!: PlayfieldContext
   private playerShot = new PlayerAutoShot()
   private lives = 3
   private score = 0
-  private enemyHpMax = STAGE2_BASE_HP
-  private enemyHp = STAGE2_BASE_HP
+  private enemyHpMax = STAGE3_BASE_HP
+  private enemyHp = STAGE3_BASE_HP
   private enemyAlive = true
   private isInvincible = false
   private invincibleUntil = 0
   private runState: RunState = 'playing'
   private phase = 0
   private enemyHitFlashUntil = 0
-  private aimedFanEvent!: Phaser.Time.TimerEvent
-  private flowerEvent!: Phaser.Time.TimerEvent
+  private doubleRingEvent!: Phaser.Time.TimerEvent
+  private crossBurstEvent!: Phaser.Time.TimerEvent
+  private spokeSpiralEvent!: Phaser.Time.TimerEvent
+  private aimedClawEvent!: Phaser.Time.TimerEvent
   private enemy!: Phaser.GameObjects.Arc
 
   constructor() {
-    super({ key: SCENE_KEYS.stage2 })
+    super({ key: SCENE_KEYS.stage3 })
   }
 
   init(data?: StageStartData): void {
@@ -43,7 +51,7 @@ export class Stage2Scene extends Phaser.Scene {
   private resetSessionState(): void {
     this.runState = 'playing'
     this.playerShot.reset()
-    this.enemyHpMax = resolveEnemyHpMax() === 1 ? 1 : STAGE2_BASE_HP
+    this.enemyHpMax = resolveEnemyHpMax() === 1 ? 1 : STAGE3_BASE_HP
     this.enemyHp = this.enemyHpMax
     this.enemyAlive = true
     this.isInvincible = false
@@ -57,8 +65,8 @@ export class Stage2Scene extends Phaser.Scene {
     this.physics.resume()
     this.playfield = installPlayfield(this)
 
-    this.enemy = this.add.circle(WIDTH / 2, 120, 28, 0x6ec7ff)
-    this.enemy.setStrokeStyle(2, 0xe1f7ff, 0.7)
+    this.enemy = this.add.circle(WIDTH / 2, 105, 38, 0x2a0a18)
+    this.enemy.setStrokeStyle(4, 0xffc14d, 0.95)
     this.physics.add.existing(this.enemy)
     const enemyBody = this.enemy.body as Phaser.Physics.Arcade.Body
     enemyBody.setAllowGravity(false)
@@ -79,16 +87,28 @@ export class Stage2Scene extends Phaser.Scene {
       this
     )
 
-    this.aimedFanEvent = this.time.addEvent({
-      delay: 700,
+    this.doubleRingEvent = this.time.addEvent({
+      delay: 2600,
       loop: true,
-      callback: () => this.spawnAimedFan(),
+      callback: () => this.spawnDoubleRing(),
     })
 
-    this.flowerEvent = this.time.addEvent({
-      delay: 170,
+    this.crossBurstEvent = this.time.addEvent({
+      delay: 1000,
       loop: true,
-      callback: () => this.spawnRotatingFlower(),
+      callback: () => this.spawnCrossBurst(),
+    })
+
+    this.spokeSpiralEvent = this.time.addEvent({
+      delay: 135,
+      loop: true,
+      callback: () => this.spawnRotatingSpokes(),
+    })
+
+    this.aimedClawEvent = this.time.addEvent({
+      delay: 580,
+      loop: true,
+      callback: () => this.spawnAimedClaw(),
     })
   }
 
@@ -115,28 +135,46 @@ export class Stage2Scene extends Phaser.Scene {
     this.updateHud()
   }
 
-  private spawnAimedFan(): void {
+  private spawnDoubleRing(): void {
     if (!this.enemyAlive) return
-    const vels = aimedFanVelocities(
+    const { outer, inner } = doubleRingVelocities(22, 14, ENEMY_BULLET_SPEED - 15, ENEMY_BULLET_SPEED + 45)
+    for (const v of outer) {
+      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xff6b5a)
+    }
+    for (const v of inner) {
+      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xffc14d)
+    }
+  }
+
+  private spawnCrossBurst(): void {
+    if (!this.enemyAlive) return
+    for (const v of octDirectionBurst(ENEMY_BULLET_SPEED + 28)) {
+      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xe8d4ff)
+    }
+  }
+
+  private spawnRotatingSpokes(): void {
+    if (!this.enemyAlive) return
+    this.phase += 0.095
+    const vels = rotatingSpokeVelocities(this.phase, 10, ENEMY_BULLET_SPEED + 12)
+    for (const v of vels) {
+      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xff4488)
+    }
+  }
+
+  private spawnAimedClaw(): void {
+    if (!this.enemyAlive) return
+    const vels = tightAimedFan(
       this.enemy.x,
       this.enemy.y,
       this.playfield.player.x,
       this.playfield.player.y,
-      ENEMY_BULLET_SPEED + 30,
+      ENEMY_BULLET_SPEED + 52,
       7,
-      Math.PI / 3.2
+      Math.PI / 2.05
     )
     for (const v of vels) {
-      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0x8fe0ff)
-    }
-  }
-
-  private spawnRotatingFlower(): void {
-    if (!this.enemyAlive) return
-    this.phase += 0.16
-    const vels = rotatingFlowerVelocities(this.phase, 8, ENEMY_BULLET_SPEED - 10)
-    for (const v of vels) {
-      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xbad8ff)
+      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xfff0b0)
     }
   }
 
@@ -150,23 +188,25 @@ export class Stage2Scene extends Phaser.Scene {
     if (!enemy || !playerBullet || !this.enemyAlive) return
     playerBullet.destroy()
     this.enemyHp -= 1
-    this.score += 12
+    this.score += 15
 
     if (this.enemyHp > 0) {
       this.enemyHitFlashUntil = this.time.now + ENEMY_HIT_FLASH_MS
-      this.enemy.setFillStyle(0xa3eeff)
+      this.enemy.setFillStyle(0xff9a4a)
       return
     }
 
     this.enemyHp = 0
-    this.score += 8000
+    this.score += 15000
     this.runState = 'clear'
     this.enemyAlive = false
     this.enemy.setVisible(false)
     const enemyBody = this.enemy.body as Phaser.Physics.Arcade.Body
     enemyBody.enable = false
-    this.removePatterns()
-    this.scene.start(SCENE_KEYS.stage3, { score: this.score, lives: this.lives })
+    showEndPauseWithRetry(this, 'GAME CLEAR', 'R : もう一度プレイ', {
+      beforePause: () => this.removePatterns(),
+      finalScore: this.score,
+    })
   }
 
   private onEnemyBulletHitPlayer(
@@ -196,25 +236,28 @@ export class Stage2Scene extends Phaser.Scene {
   }
 
   private removePatterns(): void {
-    this.aimedFanEvent.remove()
-    this.flowerEvent.remove()
+    this.doubleRingEvent.remove()
+    this.crossBurstEvent.remove()
+    this.spokeSpiralEvent.remove()
+    this.aimedClawEvent.remove()
   }
 
   private updateEnemyPosition(time: number): void {
     if (!this.enemyAlive) return
-    this.enemy.x = WIDTH / 2 + Math.sin(time * 0.0018) * 150
-    this.enemy.y = 120 + Math.cos(time * 0.0024) * 26
+    const t = time * 0.001
+    this.enemy.x = WIDTH / 2 + Math.sin(t) * 100 + Math.sin(t * 2.1) * 35
+    this.enemy.y = 105 + Math.cos(t * 1.3) * 22
   }
 
   private updateEnemyHitFlash(time: number): void {
     if (!this.enemyAlive || this.enemyHitFlashUntil === 0) return
     if (this.time.now >= this.enemyHitFlashUntil) {
-      this.enemy.setFillStyle(0x6ec7ff)
+      this.enemy.setFillStyle(0x2a0a18)
       this.enemy.setAlpha(1)
       this.enemyHitFlashUntil = 0
       return
     }
-    this.enemy.setAlpha(0.45 + Math.sin(time * 0.04) * 0.3)
+    this.enemy.setAlpha(0.4 + Math.sin(time * 0.05) * 0.35)
   }
 
   private updateHud(): void {
@@ -224,7 +267,7 @@ export class Stage2Scene extends Phaser.Scene {
     }
     this.playfield.hudText.setVisible(true)
     const lines = [
-      `STAGE: 2`,
+      `STAGE: 3 (FINAL)`,
       `SCORE: ${this.score.toString().padStart(7, '0')}`,
       `LIFE : ${'@'.repeat(Math.max(this.lives, 0))}`,
       this.formatBossHudLine(),
