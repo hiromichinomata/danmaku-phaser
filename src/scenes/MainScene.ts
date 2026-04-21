@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import {
   BULLET_SPEED,
   ENEMY_BULLET_SPEED,
+  ENEMY_HIT_FLASH_MS,
   ENEMY_HP_MAX,
   HEIGHT,
   INVINCIBLE_MS,
@@ -38,6 +39,8 @@ export class MainScene extends Phaser.Scene {
   private runState: RunState = 'playing'
   private bossRingEvent!: Phaser.Time.TimerEvent
   private bossSpiralEvent!: Phaser.Time.TimerEvent
+  /** 0 以外のとき、終了時刻 (ms) までヒットフラッシュ中 */
+  private enemyHitFlashUntil = 0
 
   constructor() {
     super('main')
@@ -61,6 +64,7 @@ export class MainScene extends Phaser.Scene {
     this.isInvincible = false
     this.invincibleUntil = 0
     this.phase = 0
+    this.enemyHitFlashUntil = 0
   }
 
   create(): void {
@@ -153,6 +157,7 @@ export class MainScene extends Phaser.Scene {
     this.updateEnemyPosition(time)
     this.updateBullets(delta)
     this.updateInvincibleState(time)
+    this.updateEnemyHitFlash(time)
     this.updateHud()
   }
 
@@ -265,6 +270,11 @@ export class MainScene extends Phaser.Scene {
     this.enemyHp -= 1
     this.score += 10
 
+    if (this.enemyHp > 0) {
+      this.enemyHitFlashUntil = this.time.now + ENEMY_HIT_FLASH_MS
+      this.enemy.setFillStyle(0xff8ab9)
+    }
+
     if (this.enemyHp <= 0) {
       this.enemyHp = 0
       this.score += 5000
@@ -336,6 +346,20 @@ export class MainScene extends Phaser.Scene {
       return
     }
     this.player.setAlpha(0.45 + Math.sin(time * 0.04) * 0.3)
+  }
+
+  private updateEnemyHitFlash(time: number): void {
+    if (!this.enemyAlive) return
+    if (this.enemyHitFlashUntil === 0) return
+
+    if (this.time.now >= this.enemyHitFlashUntil) {
+      this.enemy.setFillStyle(0xd44aff)
+      this.enemy.setAlpha(1)
+      this.enemyHitFlashUntil = 0
+      return
+    }
+
+    this.enemy.setAlpha(0.45 + Math.sin(time * 0.04) * 0.3)
   }
 
   private updateBullets(delta: number): void {

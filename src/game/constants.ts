@@ -6,3 +6,5 @@ export const BULLET_SPEED = 560
 export const ENEMY_BULLET_SPEED = 150
 export const ENEMY_HP_MAX = 140
 export const INVINCIBLE_MS = 1500
+/** ボス被弾時のヒットフラッシュ表示時間 */
+export const ENEMY_HIT_FLASH_MS = 350
