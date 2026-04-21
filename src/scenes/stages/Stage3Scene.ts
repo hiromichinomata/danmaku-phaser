@@ -19,6 +19,9 @@ import type { RunState, StageStartData } from '../../game/types.ts'
 
 /** 最終ステージ：HP多め・複合パターン（見栄えは維持しつつ避け幅を少し確保） */
 const STAGE3_BASE_HP = 420
+/** 弾幕を出し続ける時間のあと、新規発射だけ止めて一息つく */
+const DANMAKU_BURST_MS = 5_000
+const DANMAKU_REST_MS = 2_000
 
 export class Stage3Scene extends Phaser.Scene {
   private playfield!: PlayfieldContext
@@ -37,6 +40,10 @@ export class Stage3Scene extends Phaser.Scene {
   private crossBurstEvent!: Phaser.Time.TimerEvent
   private spokeSpiralEvent!: Phaser.Time.TimerEvent
   private aimedClawEvent!: Phaser.Time.TimerEvent
+  /** この時刻まで弾幕タイマーは発射可。過ぎたら `danmakuSilenceEndsAt` まで休止 */
+  private danmakuBurstEndsAt = 0
+  /** >0 かつ `time.now < これ` の間は新規弾を出さない */
+  private danmakuSilenceEndsAt = 0
   private enemy!: Phaser.GameObjects.Arc
 
   constructor() {
@@ -58,6 +65,8 @@ export class Stage3Scene extends Phaser.Scene {
     this.invincibleUntil = 0
     this.phase = 0
     this.enemyHitFlashUntil = 0
+    this.danmakuBurstEndsAt = 0
+    this.danmakuSilenceEndsAt = 0
   }
 
   create(): void {
@@ -110,6 +119,9 @@ export class Stage3Scene extends Phaser.Scene {
       loop: true,
       callback: () => this.spawnAimedClaw(),
     })
+
+    this.danmakuSilenceEndsAt = 0
+    this.danmakuBurstEndsAt = this.time.now + DANMAKU_BURST_MS
   }
 
   update(time: number, delta: number): void {
@@ -125,6 +137,7 @@ export class Stage3Scene extends Phaser.Scene {
     this.playerShot.tryFire(this, playerBullets, time, wantShot, player.x - 8, player.x + 8, player.y - 18)
 
     this.updateEnemyPosition(time)
+    this.updateDanmakuRhythm()
     updateAllBullets(playerBullets, enemyBullets, delta)
 
     const inv = updatePlayerInvincibleBlink(time, this.isInvincible, this.invincibleUntil, player)
@@ -135,8 +148,26 @@ export class Stage3Scene extends Phaser.Scene {
     this.updateHud()
   }
 
+  private isInDanmakuSilence(): boolean {
+    return this.danmakuSilenceEndsAt > 0 && this.time.now < this.danmakuSilenceEndsAt
+  }
+
+  private updateDanmakuRhythm(): void {
+    const now = this.time.now
+    if (this.danmakuSilenceEndsAt > 0) {
+      if (now >= this.danmakuSilenceEndsAt) {
+        this.danmakuSilenceEndsAt = 0
+        this.danmakuBurstEndsAt = now + DANMAKU_BURST_MS
+      }
+      return
+    }
+    if (this.danmakuBurstEndsAt > 0 && now >= this.danmakuBurstEndsAt) {
+      this.danmakuSilenceEndsAt = now + DANMAKU_REST_MS
+    }
+  }
+
   private spawnDoubleRing(): void {
-    if (!this.enemyAlive) return
+    if (!this.enemyAlive || this.isInDanmakuSilence()) return
     const { outer, inner } = doubleRingVelocities(22, 14, ENEMY_BULLET_SPEED - 15, ENEMY_BULLET_SPEED + 45)
     for (const v of outer) {
       spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xff6b5a)
@@ -147,14 +178,14 @@ export class Stage3Scene extends Phaser.Scene {
   }
 
   private spawnCrossBurst(): void {
-    if (!this.enemyAlive) return
+    if (!this.enemyAlive || this.isInDanmakuSilence()) return
     for (const v of octDirectionBurst(ENEMY_BULLET_SPEED + 28)) {
       spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xe8d4ff)
     }
   }
 
   private spawnRotatingSpokes(): void {
-    if (!this.enemyAlive) return
+    if (!this.enemyAlive || this.isInDanmakuSilence()) return
     this.phase += 0.095
     const vels = rotatingSpokeVelocities(this.phase, 10, ENEMY_BULLET_SPEED + 12)
     for (const v of vels) {
@@ -163,7 +194,7 @@ export class Stage3Scene extends Phaser.Scene {
   }
 
   private spawnAimedClaw(): void {
-    if (!this.enemyAlive) return
+    if (!this.enemyAlive || this.isInDanmakuSilence()) return
     const vels = tightAimedFan(
       this.enemy.x,
       this.enemy.y,
