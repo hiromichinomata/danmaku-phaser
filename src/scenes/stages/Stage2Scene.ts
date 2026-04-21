@@ -4,41 +4,46 @@ import { PlayerAutoShot } from '../../game/bullets/playerAutoShot.ts'
 import { spawnEnemyBulletArc } from '../../game/bullets/spawnEnemyBullet.ts'
 import { ENEMY_BULLET_SPEED, ENEMY_HIT_FLASH_MS, INVINCIBLE_MS, WIDTH } from '../../game/constants.ts'
 import { resolveEnemyHpMax } from '../../game/debugFlags.ts'
-import { ringBulletVelocities, spiralBulletPair } from '../../game/patterns/bossDanmaku.ts'
 import { SCENE_KEYS } from '../../game/registry/sceneKeys.ts'
 import { showEndPauseWithRetry } from '../../game/stage/endPause.ts'
 import { installPlayfield, type PlayfieldContext } from '../../game/stage/playfield.ts'
 import { updatePlayerInvincibleBlink } from '../../game/stage/playerInvincible.ts'
 import { updatePlayerMovement } from '../../game/stage/playerMovement.ts'
-import type { RunState } from '../../game/types.ts'
+import type { RunState, StageStartData } from '../../game/types.ts'
+import { aimedFanVelocities, rotatingFlowerVelocities } from '../../game/patterns/stage2Danmaku.ts'
 
-export class Stage1Scene extends Phaser.Scene {
+const STAGE2_BASE_HP = 220
+
+export class Stage2Scene extends Phaser.Scene {
   private playfield!: PlayfieldContext
   private playerShot = new PlayerAutoShot()
   private lives = 3
   private score = 0
-  private enemyHpMax = 140
-  private enemyHp = 0
+  private enemyHpMax = STAGE2_BASE_HP
+  private enemyHp = STAGE2_BASE_HP
   private enemyAlive = true
   private isInvincible = false
   private invincibleUntil = 0
-  private phase = 0
   private runState: RunState = 'playing'
-  private bossRingEvent!: Phaser.Time.TimerEvent
-  private bossSpiralEvent!: Phaser.Time.TimerEvent
+  private phase = 0
   private enemyHitFlashUntil = 0
+  private aimedFanEvent!: Phaser.Time.TimerEvent
+  private flowerEvent!: Phaser.Time.TimerEvent
   private enemy!: Phaser.GameObjects.Arc
 
   constructor() {
-    super({ key: SCENE_KEYS.stage1 })
+    super({ key: SCENE_KEYS.stage2 })
+  }
+
+  init(data?: StageStartData): void {
+    this.score = data?.score ?? 0
+    this.lives = data?.lives ?? 3
   }
 
   private resetSessionState(): void {
     this.runState = 'playing'
     this.playerShot.reset()
-    this.lives = 3
-    this.score = 0
-    this.enemyHpMax = resolveEnemyHpMax()
+    this.enemyHpMax = resolveEnemyHpMax() === 1 ? 1 : STAGE2_BASE_HP
     this.enemyHp = this.enemyHpMax
     this.enemyAlive = true
     this.isInvincible = false
@@ -52,7 +57,8 @@ export class Stage1Scene extends Phaser.Scene {
     this.physics.resume()
     this.playfield = installPlayfield(this)
 
-    this.enemy = this.add.circle(WIDTH / 2, 130, 24, 0xd44aff)
+    this.enemy = this.add.circle(WIDTH / 2, 120, 28, 0x6ec7ff)
+    this.enemy.setStrokeStyle(2, 0xe1f7ff, 0.7)
     this.physics.add.existing(this.enemy)
     const enemyBody = this.enemy.body as Phaser.Physics.Arcade.Body
     enemyBody.setAllowGravity(false)
@@ -73,21 +79,24 @@ export class Stage1Scene extends Phaser.Scene {
       this
     )
 
-    this.bossRingEvent = this.time.addEvent({
-      delay: 1200,
+    this.aimedFanEvent = this.time.addEvent({
+      delay: 700,
       loop: true,
-      callback: () => this.spawnRingPattern(18),
+      callback: () => this.spawnAimedFan(),
     })
 
-    this.bossSpiralEvent = this.time.addEvent({
-      delay: 110,
+    this.flowerEvent = this.time.addEvent({
+      delay: 170,
       loop: true,
-      callback: () => this.spawnSpiralPattern(),
+      callback: () => this.spawnRotatingFlower(),
     })
   }
 
   update(time: number, delta: number): void {
-    if (this.runState !== 'playing') return
+    if (this.runState !== 'playing') {
+      this.updateHud()
+      return
+    }
 
     const { cursors, keys, player, hitbox, playerBullets, enemyBullets } = this.playfield
     updatePlayerMovement(delta, { cursors, keys }, player, hitbox)
@@ -106,18 +115,28 @@ export class Stage1Scene extends Phaser.Scene {
     this.updateHud()
   }
 
-  private spawnRingPattern(count: number): void {
+  private spawnAimedFan(): void {
     if (!this.enemyAlive) return
-    for (const v of ringBulletVelocities(count, ENEMY_BULLET_SPEED)) {
-      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xff9bd4)
+    const vels = aimedFanVelocities(
+      this.enemy.x,
+      this.enemy.y,
+      this.playfield.player.x,
+      this.playfield.player.y,
+      ENEMY_BULLET_SPEED + 30,
+      7,
+      Math.PI / 3.2
+    )
+    for (const v of vels) {
+      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0x8fe0ff)
     }
   }
 
-  private spawnSpiralPattern(): void {
+  private spawnRotatingFlower(): void {
     if (!this.enemyAlive) return
-    this.phase += 0.23
-    for (const v of spiralBulletPair(this.phase, ENEMY_BULLET_SPEED).pair) {
-      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xf3d0ff)
+    this.phase += 0.16
+    const vels = rotatingFlowerVelocities(this.phase, 8, ENEMY_BULLET_SPEED - 10)
+    for (const v of vels) {
+      spawnEnemyBulletArc(this, this.playfield.enemyBullets, this.enemy.x, this.enemy.y, v.vx, v.vy, 0xbad8ff)
     }
   }
 
@@ -131,23 +150,25 @@ export class Stage1Scene extends Phaser.Scene {
     if (!enemy || !playerBullet || !this.enemyAlive) return
     playerBullet.destroy()
     this.enemyHp -= 1
-    this.score += 10
+    this.score += 12
 
     if (this.enemyHp > 0) {
       this.enemyHitFlashUntil = this.time.now + ENEMY_HIT_FLASH_MS
-      this.enemy.setFillStyle(0xff8ab9)
+      this.enemy.setFillStyle(0xa3eeff)
       return
     }
 
     this.enemyHp = 0
-    this.score += 5000
+    this.score += 8000
     this.runState = 'clear'
     this.enemyAlive = false
     this.enemy.setVisible(false)
     const enemyBody = this.enemy.body as Phaser.Physics.Arcade.Body
     enemyBody.enable = false
-    this.removeBossPatterns()
-    this.scene.start(SCENE_KEYS.stage2, { score: this.score, lives: this.lives })
+    showEndPauseWithRetry(this, 'STAGE 2 CLEAR', 'R : もう一度プレイ', {
+      beforePause: () => this.removePatterns(),
+      finalScore: this.score,
+    })
   }
 
   private onEnemyBulletHitPlayer(
@@ -171,26 +192,26 @@ export class Stage1Scene extends Phaser.Scene {
     if (this.lives <= 0) {
       this.runState = 'gameover'
       showEndPauseWithRetry(this, 'GAME OVER', 'R : もう一度プレイ', {
-        beforePause: () => this.removeBossPatterns(),
+        beforePause: () => this.removePatterns(),
       })
     }
   }
 
-  private removeBossPatterns(): void {
-    this.bossRingEvent.remove()
-    this.bossSpiralEvent.remove()
+  private removePatterns(): void {
+    this.aimedFanEvent.remove()
+    this.flowerEvent.remove()
   }
 
   private updateEnemyPosition(time: number): void {
     if (!this.enemyAlive) return
-    this.enemy.x = WIDTH / 2 + Math.sin(time * 0.0012) * 120
-    this.enemy.y = 125 + Math.sin(time * 0.0017) * 20
+    this.enemy.x = WIDTH / 2 + Math.sin(time * 0.0018) * 150
+    this.enemy.y = 120 + Math.cos(time * 0.0024) * 26
   }
 
   private updateEnemyHitFlash(time: number): void {
     if (!this.enemyAlive || this.enemyHitFlashUntil === 0) return
     if (this.time.now >= this.enemyHitFlashUntil) {
-      this.enemy.setFillStyle(0xd44aff)
+      this.enemy.setFillStyle(0x6ec7ff)
       this.enemy.setAlpha(1)
       this.enemyHitFlashUntil = 0
       return
@@ -199,9 +220,13 @@ export class Stage1Scene extends Phaser.Scene {
   }
 
   private updateHud(): void {
+    if (this.runState === 'clear') {
+      this.playfield.hudText.setVisible(false)
+      return
+    }
     this.playfield.hudText.setVisible(true)
     const lines = [
-      `STAGE: 1`,
+      `STAGE: 2`,
       `SCORE: ${this.score.toString().padStart(7, '0')}`,
       `LIFE : ${'@'.repeat(Math.max(this.lives, 0))}`,
       this.formatBossHudLine(),
@@ -215,10 +240,8 @@ export class Stage1Scene extends Phaser.Scene {
   }
 
   private formatBossHudLine(): string {
-    const cur = this.enemyHp
-    const max = this.enemyHpMax
-    if (max === 1) return `BOSS : ${cur >= 1 ? '|' : '.'}`
-    const hpRate = max > 0 ? cur / max : 0
+    if (this.enemyHpMax === 1) return `BOSS : ${this.enemyHp >= 1 ? '|' : '.'}`
+    const hpRate = this.enemyHpMax > 0 ? this.enemyHp / this.enemyHpMax : 0
     const bar = '|'.repeat(Math.ceil(hpRate * 20)).padEnd(20, '.')
     return `BOSS : ${bar}`
   }
