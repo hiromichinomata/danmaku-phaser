@@ -47,7 +47,26 @@ export class MainScene extends Phaser.Scene {
     // No external assets: draw everything with primitive shapes.
   }
 
+  /**
+   * `scene.restart()` は同一インスタンスを再利用するため、
+   * フィールドは自動では戻らない。create のたびに初期化する。
+   */
+  private resetSessionState(): void {
+    this.runState = 'playing'
+    this.shotTimer = 0
+    this.lives = 3
+    this.score = 0
+    this.enemyHp = ENEMY_HP_MAX
+    this.enemyAlive = true
+    this.isInvincible = false
+    this.invincibleUntil = 0
+    this.phase = 0
+  }
+
   create(): void {
+    this.resetSessionState()
+    this.physics.resume()
+
     this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x0a0f25).setDepth(-10)
     this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH - 12, HEIGHT - 12, 0x101a3b).setDepth(-9)
 
