@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { HEIGHT, WIDTH } from './constants.ts'
-import { MainScene } from '../scenes/MainScene.ts'
+import { Stage1Scene } from '../scenes/stages/Stage1Scene.ts'
 
 export function createGame(parent: HTMLElement): Phaser.Game {
   return new Phaser.Game({
@@ -9,7 +9,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: '#080c1f',
-    scene: [MainScene],
+    scene: [Stage1Scene],
     physics: {
       default: 'arcade',
       arcade: {
